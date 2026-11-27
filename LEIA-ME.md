@@ -4,16 +4,21 @@ Assistente de voz em Flutter para Android: esfera, voz em português, janelinha 
 stand-by, memória, pesquisa com IAs gratuitas e modelo offline dentro do celular.
 Nome do assistente e tratamento ("Senhor") configuráveis.
 
-## 1. Gerar o APK pelo celular, sem computador
+## 1. Gerar e baixar o APK
 
-1. No GitHub (app ou navegador), crie um repositório e envie TODOS os arquivos desta pasta,
-   mantendo as pastas. Confira se chegaram `.github/workflows/apk.yml`, `android_extra/` e `lib/`.
-2. Abra a aba **Actions**. O fluxo "Gerar APK" roda sozinho (ou toque em **Run workflow**).
-3. Em uns 6 a 12 minutos, abra a execução e baixe **jarvis-apk** em Artifacts.
-4. Descompacte e instale o `app-release.apk` (o Android pede para liberar fontes desconhecidas).
+1. Cada envio para a branch `main` inicia o fluxo **Gerar APK**.
+2. Para baixar um build de teste, abra **Actions**, selecione a execução e baixe `jarvis-apk` em **Artifacts**.
+3. Depois que a compilação passar, envie a tag `v2.0.0-beta.1` para iniciar a publicação da release Beta 2.0:
 
-Se a compilação falhar, abra o passo que ficou vermelho e me mande o texto do erro.
-Esta versão nunca foi compilada: é esperado ajustar alguns erros na primeira rodada.
+   ```bash
+   git tag v2.0.0-beta.1
+   git push origin v2.0.0-beta.1
+   ```
+
+   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 2.0** em **Releases**.
+4. Instale o `app-release.apk` (o Android pode pedir para liberar fontes desconhecidas).
+
+Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do erro.
 
 ## 2. Primeira abertura
 
