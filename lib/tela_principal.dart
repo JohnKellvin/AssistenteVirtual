@@ -40,7 +40,6 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cerebro = Cerebro(widget.prefs);
-    ModeloLocal.iniciar(widget.prefs).catchError((_) {});
     _iniciar();
   }
 

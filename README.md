@@ -10,9 +10,9 @@ Beta 2.0 do assistente de voz em Flutter para Android. As instruções completas
 
 ## Compilar e publicar
 
-Enviar alterações para `main` inicia o fluxo **Gerar APK**. Depois que a compilação passar, crie e envie a tag `v2.0.0-beta.1` para gerar a release Beta 2.0:
+Enviar alterações para `main` inicia o fluxo **Gerar APK**. Depois que a compilação passar, crie e envie a tag `v2.0.0-beta.2` para gerar a atualização Beta 2.0:
 
 ```bash
-git tag v2.0.0-beta.1
-git push origin v2.0.0-beta.1
+git tag v2.0.0-beta.2
+git push origin v2.0.0-beta.2
 ```

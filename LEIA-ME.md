@@ -8,14 +8,14 @@ Nome do assistente e tratamento ("Senhor") configuráveis.
 
 1. Cada envio para a branch `main` inicia o fluxo **Gerar APK**.
 2. Para baixar um build de teste, abra **Actions**, selecione a execução e baixe `jarvis-apk` em **Artifacts**.
-3. Depois que a compilação passar, envie a tag `v2.0.0-beta.1` para iniciar a publicação da release Beta 2.0:
+3. Depois que a compilação passar, envie a tag `v2.0.0-beta.2` para publicar a atualização Beta 2.0:
 
    ```bash
-   git tag v2.0.0-beta.1
-   git push origin v2.0.0-beta.1
+   git tag v2.0.0-beta.2
+   git push origin v2.0.0-beta.2
    ```
 
-   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 2.0** em **Releases**.
+   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 2.0 (Beta 2)** em **Releases**.
 4. Instale o `app-release.apk` (o Android pode pedir para liberar fontes desconhecidas).
 
 Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do erro.
