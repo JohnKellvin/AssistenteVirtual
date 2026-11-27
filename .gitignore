@@ -1,0 +1,9 @@
+.dart_tool/
+.packages
+build/
+android/
+ios/
+.gradle/
+.pub-cache/
+*.iml
+.idea/

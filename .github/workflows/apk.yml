@@ -1,0 +1,46 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Cria a parte nativa do Android (pasta android/) e mantém o código em lib/.
+      - name: Criar projeto Android
+        run: flutter create . --platforms=android --project-name jarvis_android --org com.jarvis
+
+      - name: Aplicar manifesto e configurações
+        run: |
+          cp android_extra/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          KT=$(dirname "$(find android/app/src/main -name MainActivity.kt | head -1)")
+          cp android_extra/kotlin/*.kt "$KT/"
+          sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle* || true
+          sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle* || true
+
+      - run: flutter pub get
+
+      - name: Compilar APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            pubspec.lock
