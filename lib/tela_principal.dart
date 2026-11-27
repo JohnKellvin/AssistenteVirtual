@@ -8,6 +8,7 @@ import 'acoes.dart';
 import 'cerebro.dart';
 import 'esfera.dart';
 import 'janela.dart';
+import 'memoria.dart';
 import 'modelo_local.dart';
 import 'versao.dart';
 import 'tela_config.dart';
@@ -20,7 +21,8 @@ class TelaPrincipal extends StatefulWidget {
   State<TelaPrincipal> createState() => _TelaPrincipalState();
 }
 
-class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserver {
+class _TelaPrincipalState extends State<TelaPrincipal>
+    with WidgetsBindingObserver {
   final SpeechToText _ouvido = SpeechToText();
   final FlutterTts _boca = FlutterTts();
   late final Cerebro _cerebro;
@@ -61,6 +63,7 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
   }
 
   Future<void> _iniciar() async {
+    await Memoria(widget.prefs).carregarDoCofre();
     await _boca.setLanguage('pt-BR');
     await _boca.setSpeechRate(0.5);
     _boca.setCompletionHandler(() {
@@ -71,7 +74,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
       _ouvidoPronto = await _ouvido.initialize(
         onStatus: (s) {
           // O Android encerra a escuta sozinho depois de uma pausa na fala: é aí que enviamos.
-          if ((s == 'done' || s == 'notListening') && _estado == EstadoAssistente.ouvindo) {
+          if ((s == 'done' || s == 'notListening') &&
+              _estado == EstadoAssistente.ouvindo) {
             _enviar();
           }
         },
@@ -85,12 +89,14 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
       );
     }
     if (!_ouvidoPronto && mounted) {
-      setState(() => _aviso = 'Libere o microfone nas configurações do Android.');
+      setState(
+          () => _aviso = 'Libere o microfone nas configurações do Android.');
     }
     if (widget.prefs.getString('nome') == null && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _abrirConfig());
     }
-    if ((widget.prefs.getBool('janelinha') ?? true) && !await Janela.temPermissao()) {
+    if ((widget.prefs.getBool('janelinha') ?? true) &&
+        !await Janela.temPermissao()) {
       await Janela.pedirPermissao();
     }
   }
@@ -125,7 +131,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
 
   Future<void> _comecarAOuvir() async {
     if (!_ouvidoPronto) {
-      setState(() => _aviso = 'Libere o microfone nas configurações do Android.');
+      setState(
+          () => _aviso = 'Libere o microfone nas configurações do Android.');
       return;
     }
     await _boca.stop();
@@ -139,7 +146,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
       localeId: 'pt_BR',
       onResult: (r) => setState(() => _voce = r.recognizedWords),
       listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 3), // para sozinho depois de 3 s de silêncio
+      pauseFor:
+          const Duration(seconds: 3), // para sozinho depois de 3 s de silêncio
       listenOptions: SpeechListenOptions(partialResults: true),
     );
   }
@@ -162,7 +170,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
       _estado = EstadoAssistente.pensando;
       _resposta = '';
     });
-    final r = await _cerebro.responder(texto, nome: nome, tratamento: tratamento);
+    final r =
+        await _cerebro.responder(texto, nome: nome, tratamento: tratamento);
     String fala = r.fala;
     if (r.acao != null) {
       final erro = await Acoes.executar(r.acao!);
@@ -219,7 +228,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 400),
                 opacity: _standby ? 0.18 : 1,
-                child: Esfera(estado: _standby ? EstadoAssistente.pronto : _estado),
+                child: Esfera(
+                    estado: _standby ? EstadoAssistente.pronto : _estado),
               ),
             ),
             Positioned(
@@ -229,11 +239,16 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(nome.toUpperCase(),
-                        style: const TextStyle(letterSpacing: 4, fontWeight: FontWeight.w600)),
-                    Text(versaoApp, style: const TextStyle(color: Colors.white30, fontSize: 10)),
-                  ]),
+                  Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(nome.toUpperCase(),
+                            style: const TextStyle(
+                                letterSpacing: 4, fontWeight: FontWeight.w600)),
+                        Text(versaoApp,
+                            style: const TextStyle(
+                                color: Colors.white30, fontSize: 10)),
+                      ]),
                   Row(children: [
                     Container(
                       width: 8,
@@ -247,7 +262,8 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
                     Text(rotulo, style: const TextStyle(color: Colors.white54)),
                   ]),
                   IconButton(
-                      icon: const Icon(Icons.settings, color: Colors.white54), onPressed: _abrirConfig),
+                      icon: const Icon(Icons.settings, color: Colors.white54),
+                      onPressed: _abrirConfig),
                 ],
               ),
             ),
@@ -261,15 +277,21 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
                   if (_voce.isNotEmpty && !_standby)
                     Text('“$_voce”',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white60, fontSize: 15)),
+                        style: const TextStyle(
+                            color: Colors.white60, fontSize: 15)),
                   const SizedBox(height: 10),
                   Text(_standby ? '' : _resposta,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500, height: 1.3)),
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                          height: 1.3)),
                   if (_aviso.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text(_aviso, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                      child: Text(_aviso,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13)),
                     ),
                 ],
               ),
@@ -287,13 +309,16 @@ class _TelaPrincipalState extends State<TelaPrincipal> with WidgetsBindingObserv
                     height: _estado == EstadoAssistente.ouvindo ? 110 : 96,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(_estado == EstadoAssistente.ouvindo ? 0.22 : 0.06),
+                      color: Colors.white.withOpacity(
+                          _estado == EstadoAssistente.ouvindo ? 0.22 : 0.06),
                       border: Border.all(
-                          color: _standby ? Colors.white12 : Colors.white24, width: 1.5),
+                          color: _standby ? Colors.white12 : Colors.white24,
+                          width: 1.5),
                     ),
                     alignment: Alignment.center,
                     child: Text(textoBotao,
-                        textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ),

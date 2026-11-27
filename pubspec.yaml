@@ -1,7 +1,7 @@
 name: jarvis_android
 description: Assistente de voz offline para Android.
 publish_to: "none"
-version: 2.1.0-beta.1+4
+version: 2.2.0-beta.1+5
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -17,6 +17,7 @@ dependencies:
   url_launcher: ^6.3.0
   http: ^1.2.1
   path_provider: ^2.1.3
+  flutter_secure_storage: ^10.3.4
   installed_apps: ^1.6.0
   flutter_edge_ai: ^2.7.0
   flutter_edge_ai_litertlm: ^1.21.0

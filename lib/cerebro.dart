@@ -22,8 +22,8 @@ class Resposta {
 ///
 /// Camada 1 (agora): entende os pedidos mais comuns por regras, rápido e
 /// 100% offline. Isso já cobre alarme, timer, calendário e abrir apps.
-/// Camada 2: pesquisa na web e IAs gratuitas (precisa de internet e de ao menos uma chave).
-/// Camada 3 (futura): modelo de linguagem local para responder sem internet.
+/// Camada 2: pesquisa na web e IAs online (precisa de internet e de ao menos uma chave).
+/// Camada 3: modelo de linguagem local para responder sem internet.
 class Cerebro {
   final SharedPreferences prefs;
   Cerebro(this.prefs);
@@ -216,7 +216,7 @@ class Cerebro {
       return Resposta('São ${a.hour} e $mm, $tratamento.');
     }
 
-    // Camada 2: perguntas livres. Com internet: busca + IAs gratuitas. Sem: modelo local.
+    // Camada 2: perguntas livres. Com internet: busca + IAs online. Sem: modelo local.
     final nucleo = NucleoPesquisa(prefs);
     final sobre = prefs.getString('sobre') ?? '';
     final lembrancas = mem.paraPrompt();
@@ -232,25 +232,39 @@ class Cerebro {
         .hasMatch(t);
 
     String? resposta;
+    ResultadoIA? diagnosticoIA;
     final temInternet = await _temInternet();
     if (temInternet) {
       final fontes = precisaBuscar ? await nucleo.buscar(fala) : <ResultadoBusca>[];
-      resposta = await nucleo.perguntar(sistema, fala, fontes: fontes);
+      diagnosticoIA = await nucleo.perguntar(sistema, fala, fontes: fontes);
+      resposta = diagnosticoIA.resposta;
       if (resposta == null && fontes.isNotEmpty) {
         final bruto = '${fontes.first.titulo}: ${fontes.first.trecho}';
         resposta = bruto.substring(0, bruto.length.clamp(0, 280));
       }
     }
-    // Sem internet, ou nenhuma IA gratuita respondeu: modelo dentro do celular.
+    // Sem internet, ou nenhuma IA online respondeu: modelo dentro do celular.
     resposta ??= await ModeloLocal.responder(prefs, sistema: sistema, pergunta: fala);
     if (resposta != null) {
       await mem.anotarTroca(fala, resposta);
       return Resposta(resposta);
     }
     final instalado = await ModeloLocal.instalado(prefs);
-    return Resposta(instalado || temInternet
-        ? 'Não consegui responder isso agora, $tratamento. Coloque uma chave gratuita nas configurações.'
-        : 'Estou sem internet, $tratamento, e o modelo offline ainda não foi baixado. Dá pra baixar nas configurações.');
+    if (!temInternet && !instalado) {
+      return Resposta('Estou sem internet, $tratamento, e o modelo offline ainda não foi baixado. Dá para baixar nas configurações.');
+    }
+    if (temInternet && (diagnosticoIA?.chavesConfiguradas ?? 0) == 0) {
+      return Resposta(instalado
+          ? 'Não encontrei nenhuma chave de IA salva, $tratamento, e o modelo offline também não respondeu. Revise as configurações.'
+          : 'Não encontrei nenhuma chave de IA salva, $tratamento. Cole uma chave nas configurações e toque em Salvar.');
+    }
+    if (temInternet) {
+      final causas = diagnosticoIA?.falhas.take(2).join('; ') ?? '';
+      return Resposta(causas.isEmpty
+          ? 'As IAs configuradas não responderam, $tratamento. Confira a conexão e as configurações.'
+          : 'Encontrei as chaves, $tratamento, mas as IAs falharam: $causas. Revise as configurações.');
+    }
+    return Resposta('O modelo offline está instalado, mas falhou ao responder. Feche e abra o app e tente novamente.');
   }
 
   Future<bool> _temInternet() async {

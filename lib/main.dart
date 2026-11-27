@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'armazenamento_chaves.dart';
 import 'tela_principal.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  await ArmazenamentoChaves.migrarLegado(prefs);
   runApp(AssistenteApp(prefs: prefs));
 }
 
@@ -17,9 +20,8 @@ class AssistenteApp extends StatelessWidget {
     return MaterialApp(
       title: 'Assistente',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: Colors.black,
-      ),
+      theme: ThemeData.dark(useMaterial3: true)
+          .copyWith(scaffoldBackgroundColor: Colors.black),
       home: TelaPrincipal(prefs: prefs),
     );
   }

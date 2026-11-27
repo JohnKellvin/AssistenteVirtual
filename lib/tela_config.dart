@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'armazenamento_chaves.dart';
 import 'memoria.dart';
+import 'cofre_obsidian.dart';
 import 'modelo_local.dart';
 import 'provedores.dart';
 import 'versao.dart';
@@ -19,10 +22,18 @@ class _TelaConfigState extends State<TelaConfig> {
   late final TextEditingController _sobre;
   final Map<String, TextEditingController> _chaves = {};
   late final TextEditingController _hf;
+  final Set<String> _chavesSalvas = {};
+  final Set<String> _removerChaves = {};
+  final Map<String, bool> _mostrarChaves = {};
+  bool _chavesCarregadas = false;
+  bool _salvando = false;
+  String? _erroChaves;
   bool _modeloOk = false;
   int? _progresso;
   String _msgModelo = '';
   bool _janelinha = true;
+  bool _cofreConectado = false;
+  String _msgMemoria = '';
 
   // Buscadores gratuitos (opcionais). Wikipedia e DuckDuckGo funcionam sem chave.
   static const _buscadores = {
@@ -36,50 +47,134 @@ class _TelaConfigState extends State<TelaConfig> {
     super.initState();
     final p = widget.prefs;
     _nome = TextEditingController(text: p.getString('nome') ?? 'Jarvis');
-    _tratamento = TextEditingController(text: p.getString('tratamento') ?? 'Senhor');
+    _tratamento = TextEditingController(
+      text: p.getString('tratamento') ?? 'Senhor',
+    );
     _sobre = TextEditingController(text: p.getString('sobre') ?? '');
-    _hf = TextEditingController(text: p.getString('chave_huggingface') ?? '');
+    // Os segredos não voltam para os campos de texto ao abrir as configurações.
+    _hf = TextEditingController();
     _janelinha = p.getBool('janelinha') ?? true;
+    _cofreConectado = (p.getString(Memoria.chaveCofre) ?? '').isNotEmpty;
+    _msgMemoria = p.getString(Memoria.chaveErroCofre) ?? '';
     ModeloLocal.instalado(p).then((v) {
       if (mounted) setState(() => _modeloOk = v);
     });
     for (final pr in provedoresIA) {
-      _chaves[pr.id] = TextEditingController(text: p.getString('chave_${pr.id}') ?? '');
+      _chaves[pr.id] = TextEditingController();
     }
     for (final id in _buscadores.keys) {
-      _chaves[id] = TextEditingController(text: p.getString('chave_$id') ?? '');
+      _chaves[id] = TextEditingController();
     }
+    _carregarEstadoChaves();
+  }
+
+  Future<void> _carregarEstadoChaves() async {
+    final salvas = <String>{};
+    for (final id in ArmazenamentoChaves.ids) {
+      if (await ArmazenamentoChaves.ler(id, prefs: widget.prefs) != null) {
+        salvas.add(id);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _chavesSalvas
+        ..clear()
+        ..addAll(salvas);
+      _chavesCarregadas = true;
+      if (ArmazenamentoChaves.falhaMigracao) {
+        _erroChaves =
+            'O Android não conseguiu proteger todas as chaves antigas. '
+            'As que falharam continuam no aparelho; tente salvar novamente.';
+      }
+    });
   }
 
   Future<void> _salvar() async {
+    if (!_chavesCarregadas || _salvando) return;
+    setState(() => _salvando = true);
     final p = widget.prefs;
-    await p.setString('nome', _nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim());
-    await p.setString('tratamento', _tratamento.text.trim().isEmpty ? 'Senhor' : _tratamento.text.trim());
-    await p.setString('sobre', _sobre.text.trim());
-    for (final e in _chaves.entries) {
-      await p.setString('chave_${e.key}', e.value.text.trim());
+    try {
+      for (final id in ArmazenamentoChaves.ids) {
+        final controller = id == 'huggingface' ? _hf : _chaves[id];
+        final valor = controller?.text.trim() ?? '';
+        if (valor.isNotEmpty) {
+          await ArmazenamentoChaves.salvar(id, valor, prefs: p);
+        } else if (_removerChaves.contains(id)) {
+          await ArmazenamentoChaves.apagar(id, prefs: p);
+        }
+      }
+      await p.setString(
+        'nome',
+        _nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim(),
+      );
+      await p.setString(
+        'tratamento',
+        _tratamento.text.trim().isEmpty ? 'Senhor' : _tratamento.text.trim(),
+      );
+      await p.setString('sobre', _sobre.text.trim());
+      await p.setBool('janelinha', _janelinha);
+      await Memoria(p).sincronizarCofre();
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _erroChaves =
+              'Não consegui proteger uma das chaves. Confira o bloqueio do aparelho e tente novamente.';
+          _salvando = false;
+        });
+      }
     }
-    await p.setString('chave_huggingface', _hf.text.trim());
-    await p.setBool('janelinha', _janelinha);
-    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _baixarModelo() async {
-    await widget.prefs.setString('chave_huggingface', _hf.text.trim());
-    setState(() {
-      _progresso = 0;
-      _msgModelo = '';
-    });
-    final erro = await ModeloLocal.baixar(widget.prefs, (p) {
-      if (mounted) setState(() => _progresso = p);
-    });
-    if (!mounted) return;
-    final ok = await ModeloLocal.instalado(widget.prefs);
-    setState(() {
-      _progresso = null;
-      _modeloOk = ok;
-      _msgModelo = erro ?? 'Modelo instalado. Ele já responde sem internet.';
-    });
+    if (!_chavesCarregadas || _progresso != null) return;
+    try {
+      final digitado = _hf.text.trim();
+      if (digitado.isNotEmpty) {
+        await ArmazenamentoChaves.salvar(
+          'huggingface',
+          digitado,
+          prefs: widget.prefs,
+        );
+        _hf.clear();
+        _chavesSalvas.add('huggingface');
+      }
+      final token = _removerChaves.contains('huggingface')
+          ? null
+          : await ArmazenamentoChaves.ler(
+              'huggingface',
+              prefs: widget.prefs,
+            );
+      if (token == null) {
+        setState(
+          () => _msgModelo =
+              'Cole um token de leitura do Hugging Face antes de baixar.',
+        );
+        return;
+      }
+      setState(() {
+        _progresso = 0;
+        _msgModelo = '';
+      });
+      final erro = await ModeloLocal.baixar(widget.prefs, token, (p) {
+        if (mounted) setState(() => _progresso = p);
+      });
+      if (!mounted) return;
+      final ok = await ModeloLocal.instalado(widget.prefs);
+      setState(() {
+        _progresso = null;
+        _modeloOk = ok;
+        _msgModelo = erro ?? 'Modelo instalado. Ele já responde sem internet.';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _progresso = null;
+          _msgModelo =
+              'Não consegui proteger o token neste aparelho. Confira o bloqueio e tente novamente.';
+        });
+      }
+    }
   }
 
   Future<void> _apagarMemoria() async {
@@ -89,8 +184,157 @@ class _TelaConfigState extends State<TelaConfig> {
     if (mounted) setState(() => _msgModelo = 'Memória apagada.');
   }
 
-  Widget _campo(String rotulo, TextEditingController c,
-      {String? dica, int linhas = 1, bool segredo = false}) {
+  Future<void> _conectarCofre() async {
+    try {
+      final uri = await CofreObsidian.selecionar();
+      if (uri == null || uri.isEmpty) return;
+      await Memoria(widget.prefs).conectarCofre(uri);
+      if (!mounted) return;
+      setState(() {
+        _sobre.text = widget.prefs.getString('sobre') ?? '';
+        _cofreConectado = true;
+        _msgMemoria = widget.prefs.getString(Memoria.chaveErroCofre) ??
+            'Cofre conectado. As lembranças serão salvas na nota “Assistente - Memoria.md”.';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _msgMemoria =
+              'Não consegui conectar essa pasta. Escolha uma pasta do cofre do Obsidian.',
+        );
+      }
+    }
+  }
+
+  Future<void> _desconectarCofre() async {
+    await Memoria(widget.prefs).desconectarCofre();
+    if (mounted) {
+      setState(() {
+        _cofreConectado = false;
+        _msgMemoria =
+            'Cofre desconectado. A memória existente no aparelho foi mantida.';
+      });
+    }
+  }
+
+  String _nomeChave(String id) {
+    if (id == 'huggingface') return 'Token do Hugging Face';
+    for (final provedor in provedoresIA) {
+      if (provedor.id == id) return provedor.nome;
+    }
+    return _buscadores[id] ?? id;
+  }
+
+  Future<void> _limparChave(String id, TextEditingController controller) async {
+    final temSalva = _chavesSalvas.contains(id);
+    if (temSalva) {
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Apagar chave salva?'),
+          content: Text(
+            'A chave de ${_nomeChave(id)} será removida deste aparelho.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Apagar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmar != true || !mounted) return;
+    }
+    setState(() {
+      controller.clear();
+      if (temSalva) {
+        _removerChaves.add(id);
+      } else {
+        _removerChaves.remove(id);
+      }
+    });
+  }
+
+  Widget _campoChave(
+    String id,
+    String rotulo,
+    TextEditingController controller, {
+    String? dica,
+  }) {
+    final salva = _chavesSalvas.contains(id);
+    final remover = _removerChaves.contains(id);
+    final dicaEstado = remover
+        ? 'Será removida ao tocar em Salvar.'
+        : salva
+            ? 'Já está salva com proteção neste aparelho. Deixe vazio para manter.'
+            : dica ?? 'Cole a chave aqui. Ela será protegida neste aparelho.';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextField(
+        controller: controller,
+        maxLines: 1,
+        obscureText: !(_mostrarChaves[id] ?? false),
+        autocorrect: false,
+        enableSuggestions: false,
+        autofillHints: const [],
+        keyboardType: TextInputType.visiblePassword,
+        enabled: _chavesCarregadas && !_salvando,
+        onChanged: (valor) {
+          if (valor.isNotEmpty && _removerChaves.contains(id)) {
+            setState(() => _removerChaves.remove(id));
+          }
+        },
+        decoration: InputDecoration(
+          labelText: rotulo,
+          helperText: dicaEstado,
+          helperMaxLines: 3,
+          border: const OutlineInputBorder(),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: (_mostrarChaves[id] ?? false)
+                    ? 'Ocultar o texto digitado'
+                    : 'Mostrar o texto digitado',
+                onPressed: !_chavesCarregadas || _salvando
+                    ? null
+                    : () => setState(
+                          () => _mostrarChaves[id] =
+                              !(_mostrarChaves[id] ?? false),
+                        ),
+                icon: Icon(
+                  (_mostrarChaves[id] ?? false)
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Limpar ou apagar chave',
+                onPressed: !_chavesCarregadas ||
+                        _salvando ||
+                        (!salva && controller.text.isEmpty)
+                    ? null
+                    : () => _limparChave(id, controller),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _campo(
+    String rotulo,
+    TextEditingController c, {
+    String? dica,
+    int linhas = 1,
+    bool segredo = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
@@ -110,74 +354,195 @@ class _TelaConfigState extends State<TelaConfig> {
 
   Widget _titulo(String t, [String? sub]) => Padding(
         padding: const EdgeInsets.only(top: 14, bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(t, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          if (sub != null)
-            Padding(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              t,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            if (sub != null)
+              Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(sub, style: const TextStyle(color: Colors.white54, fontSize: 13))),
-        ]),
+                child: Text(
+                  sub,
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ),
+          ],
+        ),
       );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Configurações'), backgroundColor: Colors.black),
+      appBar: AppBar(
+        title: const Text('Configurações'),
+        backgroundColor: Colors.black,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _campo('Nome do assistente', _nome, dica: 'Ex.: Jarvis, Sexta-feira.'),
-          _campo('Como ele te chama', _tratamento, dica: 'Ex.: Senhor, Senhora, ou o seu nome.'),
-          _campo('Sobre você (opcional)', _sobre,
-              dica: 'Quem você é e o que costuma pedir.', linhas: 3),
-          _titulo('IAs gratuitas',
-              'Coloque a chave de uma ou mais. Se uma atingir o limite, ele usa a próxima, nesta ordem.'),
+          _campo(
+            'Nome do assistente',
+            _nome,
+            dica: 'Ex.: Jarvis, Sexta-feira.',
+          ),
+          _campo(
+            'Como ele te chama',
+            _tratamento,
+            dica: 'Ex.: Senhor, Senhora, ou o seu nome.',
+          ),
+          _campo(
+            'Sobre você (opcional)',
+            _sobre,
+            dica: 'Quem você é e o que costuma pedir.',
+            linhas: 3,
+          ),
+          _titulo(
+            'IAs pela internet',
+            'Cole as chaves e toque em Salvar. Elas ficam protegidas neste aparelho. Deixe vazio para manter uma chave salva; use a lixeira para removê-la. Confira se a cota não cobra.',
+          ),
+          if (!_chavesCarregadas)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: LinearProgressIndicator(),
+            ),
+          if (_erroChaves != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _erroChaves!,
+                style: const TextStyle(color: Colors.amberAccent),
+              ),
+            ),
           for (final pr in provedoresIA)
-            _campo(pr.nome, _chaves[pr.id]!, segredo: true, dica: 'Chave grátis em ${pr.ondeCriarChave}'),
-          _titulo('Buscadores gratuitos',
-              'Opcionais. Sem chave ele usa a Wikipedia e o DuckDuckGo, que respondem menos.'),
-          for (final e in _buscadores.entries) _campo(e.value, _chaves[e.key]!, segredo: true),
-          _titulo('Modelo offline',
-              'Gemma 3 de 1 bilhão de parâmetros, cerca de 550 MB. Baixa uma vez, com internet, e depois responde sem internet.'),
-          _campo('Token do Hugging Face', _hf,
-              segredo: true,
-              dica: 'Grátis. Crie conta em huggingface.co, aceite a licença do Gemma em '
-                  'huggingface.co/litert-community/Gemma3-1B-IT e crie um token de leitura.'),
+            _campoChave(
+              pr.id,
+              pr.nome,
+              _chaves[pr.id]!,
+              dica:
+                  'Chave/API em ${pr.ondeCriarChave}. Será protegida neste aparelho.',
+            ),
+          _titulo(
+            'Buscadores gratuitos',
+            'Opcionais. Sem chave ele usa a Wikipedia e o DuckDuckGo, que respondem menos.',
+          ),
+          for (final e in _buscadores.entries)
+            _campoChave(e.key, e.value, _chaves[e.key]!),
+          _titulo(
+            'Modelo offline',
+            'Gemma 3 de 1 bilhão de parâmetros, cerca de 584 MB. Baixa uma vez, com internet, e depois responde sem internet.',
+          ),
+          _campoChave(
+            'huggingface',
+            'Token do Hugging Face',
+            _hf,
+            dica:
+                'Grátis. Crie conta em huggingface.co, aceite a licença do Gemma em '
+                'huggingface.co/litert-community/Gemma3-1B-IT e crie um token de leitura.',
+          ),
           if (_progresso != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: LinearProgressIndicator(value: (_progresso! / 100).clamp(0.0, 1.0)),
+              child: LinearProgressIndicator(
+                value: (_progresso! / 100).clamp(0.0, 1.0),
+              ),
             ),
           OutlinedButton(
-            onPressed: _progresso != null ? null : _baixarModelo,
+            onPressed: !_chavesCarregadas || _salvando || _progresso != null
+                ? null
+                : _baixarModelo,
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(_modeloOk ? 'Baixar de novo o modelo offline' : 'Baixar modelo offline'),
+              child: Text(
+                _modeloOk
+                    ? 'Baixar de novo o modelo offline'
+                    : 'Baixar modelo offline',
+              ),
             ),
           ),
           if (_msgModelo.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(_msgModelo, style: const TextStyle(color: Colors.white60, fontSize: 13)),
+              child: Text(
+                _msgModelo,
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+            ),
+          _titulo(
+            'Obsidian como memória',
+            'Escolha a pasta do cofre. O app cria e atualiza uma nota com os fatos lembrados e as conversas recentes.',
+          ),
+          OutlinedButton.icon(
+            onPressed: _conectarCofre,
+            icon: const Icon(Icons.folder_open),
+            label: Text(
+              _cofreConectado
+                  ? 'Trocar cofre do Obsidian'
+                  : 'Conectar cofre do Obsidian',
+            ),
+          ),
+          if (_cofreConectado)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _desconectarCofre,
+                child: const Text('Desconectar cofre'),
+              ),
+            ),
+          if (_msgMemoria.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _msgMemoria,
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
+              ),
             ),
           _titulo('Janelinha e memória'),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Mostrar bolinha ao sair do app'),
-            subtitle: const Text('Branca = ativo, cinza = stand-by. Precisa da permissão de sobrepor apps.'),
+            subtitle: const Text(
+              'Branca = ativo, cinza = stand-by. Precisa da permissão de sobrepor apps.',
+            ),
             value: _janelinha,
             onChanged: (v) => setState(() => _janelinha = v),
           ),
-          TextButton(onPressed: _apagarMemoria, child: const Text('Apagar memória e conversa')),
+          TextButton(
+            onPressed: _apagarMemoria,
+            child: const Text('Apagar memória e conversa'),
+          ),
           const SizedBox(height: 8),
           FilledButton(
-              onPressed: _salvar,
-              child: const Padding(padding: EdgeInsets.all(12), child: Text('Salvar'))),
+            onPressed: !_chavesCarregadas || _salvando ? null : _salvar,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(_salvando ? 'Salvando...' : 'Salvar'),
+            ),
+          ),
           const SizedBox(height: 24),
-          Center(child: Text('Versão $versaoApp', style: const TextStyle(color: Colors.white38, fontSize: 12))),
+          Center(
+            child: Text(
+              'Versão $versaoApp',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ),
           const SizedBox(height: 16),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _nome.dispose();
+    _tratamento.dispose();
+    _sobre.dispose();
+    _hf.dispose();
+    for (final controller in _chaves.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 }
