@@ -101,6 +101,20 @@ class MainActivity : FlutterActivity() {
                     else try { salvarMemoria(Uri.parse(uri), texto); result.success(true) }
                     catch (e: Exception) { result.error("gravacao", e.message, null) }
                 }
+                "salvarNota" -> {
+                    val uri = call.argument<String>("uri")
+                    val nota = call.argument<String>("nome")
+                    val marca = call.argument<String>("marca")
+                    val texto = call.argument<String>("texto")
+                    if (uri == null || nota == null || marca == null || texto == null) {
+                        result.error("dados", "Faltam dados para salvar.", null)
+                    } else try {
+                        salvarNota(Uri.parse(uri), nota, marca, texto)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("gravacao", e.message, null)
+                    }
+                }
                 "buscarNotas" -> {
                     val uri = call.argument<String>("uri")
                     val termos = call.argument<List<String>>("termos") ?: emptyList()
@@ -163,8 +177,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun uriDaNota(tree: Uri, criar: Boolean): Uri? {
-        val nome = "Assistente - Memoria.md"
+    private fun uriDaNota(tree: Uri, nome: String, criar: Boolean): Uri? {
         val raiz = DocumentsContract.getTreeDocumentId(tree)
         val filhos = DocumentsContract.buildChildDocumentsUriUsingTree(tree, raiz)
         contentResolver.query(
@@ -186,16 +199,28 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun lerMemoria(tree: Uri): String {
-        val nota = uriDaNota(tree, criar = false) ?: return ""
+        val nota = uriDaNota(tree, "Assistente - Memoria.md", criar = false) ?: return ""
         return contentResolver.openInputStream(nota)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
     }
 
     private fun salvarMemoria(tree: Uri, texto: String) {
-        val nota = uriDaNota(tree, criar = true)
+        val nota = uriDaNota(tree, "Assistente - Memoria.md", criar = true)
             ?: throw IllegalStateException("Não consegui abrir a nota no cofre.")
         val existente = contentResolver.openInputStream(nota)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
         val notaDoApp = existente.contains("<!-- JARVIS_DATA_START") && existente.contains("JARVIS_DATA_END -->")
         if (existente.isNotBlank() && !notaDoApp) {
+            throw IllegalStateException("Já existe uma nota com esse nome. Renomeie-a para preservar o conteúdo.")
+        }
+        contentResolver.openOutputStream(nota, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(texto) }
+            ?: throw IllegalStateException("Não consegui abrir a nota para escrita.")
+    }
+
+    // Grava uma nota do app. Se já existe uma nota com esse nome sem a [marca], ela é preservada.
+    private fun salvarNota(tree: Uri, nome: String, marca: String, texto: String) {
+        val nota = uriDaNota(tree, nome, criar = true)
+            ?: throw IllegalStateException("Não consegui abrir a nota no cofre.")
+        val existente = contentResolver.openInputStream(nota)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+        if (existente.isNotBlank() && !existente.contains(marca)) {
             throw IllegalStateException("Já existe uma nota com esse nome. Renomeie-a para preservar o conteúdo.")
         }
         contentResolver.openOutputStream(nota, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(texto) }
@@ -236,7 +261,7 @@ class MainActivity : FlutterActivity() {
                         varrer(id, nivel + 1)
                         continue
                     }
-                    if (!nome.endsWith(".md", true) || nome == "Assistente - Memoria.md") continue
+                    if (!nome.endsWith(".md", true) || nome.startsWith("Assistente - ")) continue
                     if (tamanho <= 0 || tamanho > 200_000) continue
                     lidos++
                     val texto = contentResolver

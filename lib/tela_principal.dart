@@ -6,6 +6,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'acoes.dart';
+import 'capacidades.dart';
+import 'despertar.dart';
+import 'voz.dart';
 import 'cerebro.dart';
 import 'esfera.dart';
 import 'janela.dart';
@@ -35,6 +38,8 @@ class _TelaPrincipalState extends State<TelaPrincipal>
   bool _ouvidoPronto = false;
   bool _enviando = false;
   String _indicadorEnviado = '';
+  int _falhasVigia = 0;
+  bool _acordando = false;
 
   String get nome => widget.prefs.getString('nome') ?? 'Jarvis';
   String get tratamento => widget.prefs.getString('tratamento') ?? 'Senhor';
@@ -58,6 +63,7 @@ class _TelaPrincipalState extends State<TelaPrincipal>
           _standby = v;
           if (v) _estado = EstadoAssistente.pronto;
         });
+        if (v) _vigiar();
       },
       aoEncerrar: () => SystemNavigator.pop(),
     );
@@ -73,15 +79,18 @@ class _TelaPrincipalState extends State<TelaPrincipal>
       if (mounted && _estado != EstadoAssistente.pronto) {
         setState(() => _estado = EstadoAssistente.pronto);
       }
+    } else if (_standby) {
+      _vigiar();
     }
   }
 
   Future<void> _iniciar() async {
     await Memoria(widget.prefs).carregarDoCofre();
-    await _boca.setLanguage('pt-BR');
-    await _boca.setSpeechRate(0.5);
+    await Capacidades.sincronizar(widget.prefs);
+    await Voz.aplicar(_boca, widget.prefs);
     _boca.setCompletionHandler(() {
       if (mounted) setState(() => _estado = EstadoAssistente.pronto);
+      if (_standby) _vigiar();
     });
     final mic = await Permission.microphone.request();
     if (mic.isGranted) {
@@ -91,10 +100,22 @@ class _TelaPrincipalState extends State<TelaPrincipal>
           if ((s == 'done' || s == 'notListening') &&
               _estado == EstadoAssistente.ouvindo) {
             _enviar();
+          } else if ((s == 'done' || s == 'notListening') && _standby) {
+            Future.delayed(const Duration(milliseconds: 500), _vigiar);
           }
         },
         onError: (e) {
           if (!mounted) return;
+          if (_standby) {
+            _falhasVigia++;
+            if (_falhasVigia < 6) {
+              Future.delayed(const Duration(milliseconds: 1500), _vigiar);
+            } else {
+              setState(() => _aviso =
+                  'Não consegui ouvir o chamado. Toque no botão para acordar.');
+            }
+            return;
+          }
           setState(() {
             _aviso = 'Não ouvi nada. Toque e fale de novo.';
             _estado = EstadoAssistente.pronto;
@@ -155,6 +176,7 @@ class _TelaPrincipalState extends State<TelaPrincipal>
   // Toque enquanto ele fala ou pensa: interrompe.
   Future<void> _tocar() async {
     if (_standby) {
+      await _ouvido.cancel();
       setState(() {
         _standby = false;
         _aviso = '';
@@ -186,6 +208,7 @@ class _TelaPrincipalState extends State<TelaPrincipal>
       return;
     }
     await _boca.stop();
+    await _ouvido.cancel();
     setState(() {
       _estado = EstadoAssistente.ouvindo;
       _voce = '';
@@ -240,7 +263,51 @@ class _TelaPrincipalState extends State<TelaPrincipal>
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => TelaConfig(prefs: widget.prefs)),
     );
+    await Voz.aplicar(_boca, widget.prefs);
     if (mounted) setState(() => _indicadorEnviado = '');
+  }
+
+  // Stand-by com o app aberto: fica ouvindo só o chamado "<nome>, acorde".
+  Future<void> _vigiar() async {
+    if (!mounted || !_standby || !_ouvidoPronto) return;
+    if (!(widget.prefs.getBool('acordar_por_voz') ?? false)) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    if (_ouvido.isListening) return;
+    try {
+      await _ouvido.listen(
+        localeId: 'pt_BR',
+        onResult: (r) {
+          _falhasVigia = 0;
+          if (_standby && Despertar.chamou(r.recognizedWords, nome)) {
+            _acordarPorVoz();
+          }
+        },
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 6),
+        listenOptions: SpeechListenOptions(partialResults: true),
+      );
+    } catch (_) {
+      _falhasVigia++;
+    }
+  }
+
+  Future<void> _acordarPorVoz() async {
+    if (!_standby || _acordando) return;
+    _acordando = true;
+    _falhasVigia = 0;
+    try {
+      await _ouvido.cancel();
+      if (!mounted) return;
+      setState(() {
+        _standby = false;
+        _aviso = '';
+        _resposta = '';
+        _voce = '';
+      });
+      await _boca.speak('Às ordens, $tratamento.');
+    } finally {
+      _acordando = false;
+    }
   }
 
   @override

@@ -3,7 +3,7 @@ name: Gerar APK
 on:
   push:
     branches: [main]
-    tags: ["v3.0.0-beta.*"]
+    tags: ["v3.1.0-beta.*"]
   workflow_dispatch:
 
 permissions:
@@ -49,13 +49,13 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             pubspec.lock
 
-      - name: Publicar release Beta 3
-        if: startsWith(github.ref, 'refs/tags/v3.0.0-beta.')
+      - name: Publicar release Beta 3.1
+        if: startsWith(github.ref, 'refs/tags/v3.1.0-beta.')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
-            --title "Assistente Beta 3" \
-            --notes "Assistente para Android. Indicador de ativo em notificação estilo player de mídia, notas do Obsidian como base de conhecimento (opcional), configurações salvas ao sair da tela e atalho com o nome escolhido." \
+            --title "Assistente Beta 3.1" \
+            --notes "Assistente para Android. Nota do Obsidian com o que o assistente faz em cada versão, escolha da voz e acordar chamando o nome com o app aberto." \
             --prerelease

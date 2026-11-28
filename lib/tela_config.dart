@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'armazenamento_chaves.dart';
 import 'memoria.dart';
+import 'capacidades.dart';
 import 'cofre_obsidian.dart';
 import 'janela.dart';
 import 'modelo_local.dart';
 import 'provedores.dart';
 import 'versao.dart';
+import 'voz.dart';
 
 class TelaConfig extends StatefulWidget {
   final SharedPreferences prefs;
@@ -37,6 +40,13 @@ class _TelaConfigState extends State<TelaConfig> {
   bool _usarNotas = false;
   String _msgAtalho = '';
   int _tentativasSair = 0;
+  final FlutterTts _tts = FlutterTts();
+  List<Map<String, String>> _vozes = [];
+  String _vozNome = '';
+  String _vozLocale = '';
+  double _velocidade = 0.5;
+  double _tom = 1.0;
+  bool _acordarVoz = false;
   bool _cofreConectado = false;
   String _msgMemoria = '';
 
@@ -61,6 +71,14 @@ class _TelaConfigState extends State<TelaConfig> {
     _janelinha = p.getBool('janelinha') ?? true;
     _indicadorMidia = p.getBool('indicador_midia') ?? true;
     _usarNotas = p.getBool('usar_notas') ?? false;
+    _acordarVoz = p.getBool('acordar_por_voz') ?? false;
+    _vozNome = p.getString('voz_nome') ?? '';
+    _vozLocale = p.getString('voz_locale') ?? '';
+    _velocidade = p.getDouble('voz_velocidade') ?? 0.5;
+    _tom = p.getDouble('voz_tom') ?? 1.0;
+    Voz.listar(_tts).then((v) {
+      if (mounted) setState(() => _vozes = v);
+    });
     _cofreConectado = (p.getString(Memoria.chaveCofre) ?? '').isNotEmpty;
     _msgMemoria = p.getString(Memoria.chaveErroCofre) ?? '';
     ModeloLocal.instalado(p).then((v) {
@@ -121,6 +139,11 @@ class _TelaConfigState extends State<TelaConfig> {
       await p.setString('sobre', _sobre.text.trim());
       await p.setBool('janelinha', _janelinha);
       await p.setBool('indicador_midia', _indicadorMidia);
+      await p.setBool('acordar_por_voz', _acordarVoz);
+      await p.setString('voz_nome', _vozNome);
+      await p.setString('voz_locale', _vozLocale);
+      await p.setDouble('voz_velocidade', _velocidade);
+      await p.setDouble('voz_tom', _tom);
       await p.setBool('usar_notas', _usarNotas && _cofreConectado);
       await Memoria(p).sincronizarCofre();
       if (mounted) Navigator.of(context).pop();
@@ -186,6 +209,20 @@ class _TelaConfigState extends State<TelaConfig> {
     }
   }
 
+  Future<void> _amostraVoz() async {
+    await _tts.stop();
+    await _tts.setLanguage('pt-BR');
+    if (_vozNome.isNotEmpty) {
+      try {
+        await _tts.setVoice({'name': _vozNome, 'locale': _vozLocale});
+      } catch (_) {}
+    }
+    await _tts.setSpeechRate(_velocidade);
+    await _tts.setPitch(_tom);
+    final nome = _nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim();
+    await _tts.speak('Olá, eu sou $nome. Esta é a minha voz.');
+  }
+
   Future<void> _criarAtalho() async {
     final nome = _nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim();
     final msg = await Janela.criarAtalho(nome);
@@ -204,6 +241,7 @@ class _TelaConfigState extends State<TelaConfig> {
       final uri = await CofreObsidian.selecionar();
       if (uri == null || uri.isEmpty) return;
       await Memoria(widget.prefs).conectarCofre(uri);
+      await Capacidades.sincronizar(widget.prefs, forcar: true);
       if (!mounted) return;
       setState(() {
         _sobre.text = widget.prefs.getString('sobre') ?? '';
@@ -427,6 +465,70 @@ class _TelaConfigState extends State<TelaConfig> {
             linhas: 3,
           ),
           _titulo(
+            'Voz do assistente',
+            'Vozes em português instaladas no Android. Para ter mais opções, instale vozes em Configurações do Android > Texto para fala.',
+          ),
+          if (_vozes.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Nenhuma voz em português encontrada. Vou usar a voz padrão do aparelho.',
+                style: TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: DropdownButtonFormField<String>(
+                isExpanded: true,
+                value: _vozes.any((v) => v['name'] == _vozNome) ? _vozNome : '',
+                decoration: const InputDecoration(
+                  labelText: 'Voz',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('Padrão do aparelho')),
+                  for (var i = 0; i < _vozes.length; i++)
+                    DropdownMenuItem(
+                      value: _vozes[i]['name']!,
+                      child: Text(Voz.rotulo(i, _vozes[i]), overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (v) => setState(() {
+                  _vozNome = v ?? '';
+                  _vozLocale = (v == null || v.isEmpty)
+                      ? ''
+                      : _vozes.firstWhere((x) => x['name'] == v)['locale']!;
+                }),
+              ),
+            ),
+          Text('Velocidade: ${_velocidade.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white60, fontSize: 13)),
+          Slider(
+            value: _velocidade,
+            min: 0.3,
+            max: 0.8,
+            divisions: 10,
+            onChanged: (v) => setState(() => _velocidade = v),
+          ),
+          Text('Tom: ${_tom.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white60, fontSize: 13)),
+          Slider(
+            value: _tom,
+            min: 0.8,
+            max: 1.4,
+            divisions: 6,
+            onChanged: (v) => setState(() => _tom = v),
+          ),
+          OutlinedButton.icon(
+            onPressed: _amostraVoz,
+            icon: const Icon(Icons.volume_up),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Ouvir amostra'),
+            ),
+          ),
+          _titulo(
             'IAs pela internet',
             'Cole as chaves. Elas são salvas ao sair desta tela. Elas ficam protegidas neste aparelho. Deixe vazio para manter uma chave salva; use a lixeira para removê-la. Confira se a cota não cobra.',
           ),
@@ -556,6 +658,15 @@ class _TelaConfigState extends State<TelaConfig> {
             value: _usarNotas && _cofreConectado,
             onChanged: _cofreConectado ? (v) => setState(() => _usarNotas = v) : null,
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Acordar chamando o nome (app aberto)'),
+            subtitle: Text(
+              'Em stand-by o microfone fica aberto ouvindo "${_nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim()}, acorde". Gasta bateria, e o Android pode tocar um bipe a cada reinício da escuta. Não funciona com o app fechado ou a tela apagada.',
+            ),
+            value: _acordarVoz,
+            onChanged: (v) => setState(() => _acordarVoz = v),
+          ),
           OutlinedButton.icon(
             onPressed: _criarAtalho,
             icon: const Icon(Icons.add_to_home_screen),
@@ -604,6 +715,7 @@ class _TelaConfigState extends State<TelaConfig> {
     _tratamento.dispose();
     _sobre.dispose();
     _hf.dispose();
+    _tts.stop();
     for (final controller in _chaves.values) {
       controller.dispose();
     }

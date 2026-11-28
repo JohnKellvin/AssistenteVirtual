@@ -1,8 +1,22 @@
-# Assistente para Android, beta 3
+# Assistente para Android, beta 3.1
 
 Assistente de voz em Flutter para Android: esfera, voz em português, janelinha flutuante,
 stand-by, memória, pesquisa pela internet e modelo offline dentro do celular.
 Nome do assistente e tratamento ("Senhor") configuráveis.
+
+## Novidades da beta 3.1
+
+- **Nota "Assistente - O que eu faço" no Obsidian**: com o cofre conectado, o app grava uma nota com o que
+  o assistente faz e não faz na versão instalada, mais o histórico de versões. Ela é reescrita a cada versão
+  nova (não edite). Se já existir uma nota com esse nome que não é do app, ela é preservada. O mesmo texto
+  orienta a IA a não prometer o que o app não cumpre, e "o que você sabe fazer?" é respondido sem internet.
+- **Escolha da voz**: em Configurações, escolha entre as vozes em português instaladas no Android, ajuste
+  velocidade e tom e toque em "Ouvir amostra". Para mais opções, instale vozes em Texto para fala, no Android.
+- **Acordar chamando o nome** (opcional, desligado por padrão): em stand-by, com o app aberto, ele fica ouvindo
+  "Bia, acorde" (com o nome que você escolheu; vale também desperte, ative e volte) e acorda sozinho.
+  Gasta bateria, o Android pode tocar um bipe a cada reinício da escuta, e o áudio passa pelo reconhecimento de
+  voz do Android (do Google, a menos que o pacote offline esteja instalado). Não funciona com o app fechado
+  nem com a tela apagada.
 
 ## Novidades da beta 3
 
@@ -20,14 +34,14 @@ Nome do assistente e tratamento ("Senhor") configuráveis.
 
 1. Cada envio para a branch `main` inicia o fluxo **Gerar APK**.
 2. Para baixar um build de teste, abra **Actions**, selecione a execução e baixe `jarvis-apk` em **Artifacts**.
-3. Depois que a compilação passar, envie a tag `v3.0.0-beta.1` para publicar a versão Beta 3:
+3. Depois que a compilação passar, envie a tag `v3.1.0-beta.1` para publicar a versão Beta 3.1:
 
    ```bash
-   git tag v3.0.0-beta.1
-   git push origin v3.0.0-beta.1
+   git tag v3.1.0-beta.1
+   git push origin v3.1.0-beta.1
    ```
 
-   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 3** em **Releases**.
+   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 3.1** em **Releases**.
 4. Instale o `app-release.apk` (o Android pode pedir para liberar fontes desconhecidas).
 
 Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do erro.
@@ -49,8 +63,8 @@ Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do err
   com **Acordar**. Em alguns celulares (como Samsung com One UI 8) o sistema também mostra um chip na barra
   de status; isso depende do aparelho e não dá para garantir. Se o botão Falar não abrir o app, toque no cartão.
   Em Configurações dá para trocar para uma notificação simples.
-- O stand-by NÃO escuta o microfone em segundo plano (o Android só permite isso com escuta
-  contínua e notificação fixa, que gasta bateria). Ele só ouve com o app aberto e depois de um toque.
+- O stand-by só escuta o chamado pelo nome se você ligar essa opção, e apenas com o app aberto. Com o app fechado
+  ou a tela apagada ele não escuta (o Android só permite isso com escuta contínua, que gasta bateria).
 
 ## 4. O que ele faz
 

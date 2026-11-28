@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'capacidades.dart';
 import 'cofre_obsidian.dart';
 import 'memoria.dart';
 import 'modelo_local.dart';
@@ -210,6 +211,11 @@ class Cerebro {
       return Resposta('Abrindo, $tratamento.', acao: AcaoPedida('abrir', {'nome': ab.group(3)!.trim()}));
     }
 
+    // O que o assistente sabe fazer (offline, sem modelo)
+    if (RegExp(r'o que (você|voce|vc) (sabe|consegue|pode) fazer|quais (são )?(os )?seus comandos|suas funções|suas funcoes').hasMatch(t)) {
+      return Resposta(Capacidades.resumoFalado(tratamento));
+    }
+
     // Horas e data (offline, sem modelo)
     if (t.contains('que horas')) {
       final a = DateTime.now();
@@ -254,7 +260,7 @@ class Cerebro {
         'sem markdown, lista, emoji ou link, com números do jeito que se fala. Nunca invente dados. '
         '${sobre.isEmpty ? '' : 'Sobre o dono: $sobre. '}$lembrancas'
         '${historico.isEmpty ? '' : '\nConversa recente:\n$historico'}';
-    final sistema = sistemaBase + notas;
+    final sistema = '$sistemaBase\n${Capacidades.paraPrompt()}$notas';
 
     final precisaBuscar = RegExp(
         r'\b(quem|quando|onde|quanto|qual|quais|notícia|noticias|notícias|cotação|clima|tempo|previsão|resultado|jogo|preço|preco|pesquis)')

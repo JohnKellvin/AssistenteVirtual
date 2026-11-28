@@ -1,2 +1,2 @@
 /// Versão do app mostrada nas configurações.
-const versaoApp = 'beta 3';
+const versaoApp = 'beta 3.1';

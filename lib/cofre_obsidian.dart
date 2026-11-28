@@ -19,6 +19,12 @@ class CofreObsidian {
     return r.map((e) => Map<String, String>.from(e as Map)).toList();
   }
 
+  /// Grava uma nota do app (com [marca] de posse). Nunca sobrescreve nota alheia.
+  static Future<void> salvarNota(String uri, String nome, String marca, String texto) async {
+    await _canal.invokeMethod('salvarNota',
+        {'uri': uri, 'nome': nome, 'marca': marca, 'texto': texto});
+  }
+
   static Future<void> salvar(String uri, String texto) async {
     await _canal.invokeMethod<bool>('salvarMemoria', {'uri': uri, 'texto': texto});
   }
