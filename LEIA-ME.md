@@ -1,21 +1,33 @@
-# Jarvis para Android, beta 2.2
+# Assistente para Android, beta 3
 
 Assistente de voz em Flutter para Android: esfera, voz em português, janelinha flutuante,
 stand-by, memória, pesquisa pela internet e modelo offline dentro do celular.
 Nome do assistente e tratamento ("Senhor") configuráveis.
 
+## Novidades da beta 3
+
+- O indicador de ativo agora é uma notificação estilo player de mídia (no lugar da bolinha sobre outros apps).
+- Notas do Obsidian como base de conhecimento (opcional): o app procura trechos nas suas notas .md,
+  só leitura, e os usa nas respostas. Fica desligado até você ligar em Configurações. Atenção: os trechos
+  vão para a IA que responder, inclusive as da internet.
+- As configurações são salvas ao sair da tela (seta ou gesto de voltar). Se o salvamento falhar,
+  voltar de novo sai mesmo assim.
+- Nome do app: **Assistente**. O assistente usa o nome que você escolher no app, na notificação e nas respostas.
+  O Android não deixa trocar o nome do ícone principal na hora; em Configurações há o botão
+  "Criar ícone na tela inicial com esse nome", que pede ao Android um atalho com o nome atual.
+
 ## 1. Gerar e baixar o APK
 
 1. Cada envio para a branch `main` inicia o fluxo **Gerar APK**.
 2. Para baixar um build de teste, abra **Actions**, selecione a execução e baixe `jarvis-apk` em **Artifacts**.
-3. Depois que a compilação passar, envie a tag `v2.2.0-beta.1` para publicar a versão Beta 2.2:
+3. Depois que a compilação passar, envie a tag `v3.0.0-beta.1` para publicar a versão Beta 3:
 
    ```bash
-   git tag v2.2.0-beta.1
-   git push origin v2.2.0-beta.1
+   git tag v3.0.0-beta.1
+   git push origin v3.0.0-beta.1
    ```
 
-   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 2.2** em **Releases**.
+   O fluxo compila o APK e o anexa à pré-release **Assistente Beta 3** em **Releases**.
 4. Instale o `app-release.apk` (o Android pode pedir para liberar fontes desconhecidas).
 
 Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do erro.
@@ -23,7 +35,7 @@ Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do err
 ## 2. Primeira abertura
 
 1. Escolha o nome do assistente e como ele te chama.
-2. Libere o microfone e a permissão "sobrepor outros apps" (para a bolinha).
+2. Libere o microfone e a permissão de notificações (para o indicador).
 3. Para funcionar sem internet, baixe o pacote de português do reconhecimento de voz:
    Configurações do Android > Aplicativos > Google > Reconhecimento de fala offline.
 
@@ -32,8 +44,11 @@ Se a compilação falhar, abra o passo que ficou vermelho e envie o texto do err
 - **Um toque** no botão: começa a ouvir. Depois de 3 s de silêncio ele envia sozinho.
   Outro toque durante a escuta envia na hora. Toque enquanto ele fala ou pensa: ele para.
 - **Stand-by**: diga "stand-by" ou "pode parar". A esfera apaga. Toque no botão para acordar.
-- **Bolinha**: ao sair do app, aparece por cima das outras telas. Branca = ativo, cinza "zZ" = stand-by.
-  Arraste para mover, toque para voltar ao Jarvis.
+- **Indicador de ativo**: uma notificação fixa com o nome do assistente, no estilo de um player de mídia
+  (cartão com a esfera, título e botões **Falar**, **Stand-by** e **Encerrar**). Em stand-by ela fica cinza,
+  com **Acordar**. Em alguns celulares (como Samsung com One UI 8) o sistema também mostra um chip na barra
+  de status; isso depende do aparelho e não dá para garantir. Se o botão Falar não abrir o app, toque no cartão.
+  Em Configurações dá para trocar para uma notificação simples.
 - O stand-by NÃO escuta o microfone em segundo plano (o Android só permite isso com escuta
   contínua e notificação fixa, que gasta bateria). Ele só ouve com o app aberto e depois de um toque.
 

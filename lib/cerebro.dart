@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'cofre_obsidian.dart';
 import 'memoria.dart';
 import 'modelo_local.dart';
 import 'provedores.dart';
@@ -221,11 +222,39 @@ class Cerebro {
     final sobre = prefs.getString('sobre') ?? '';
     final lembrancas = mem.paraPrompt();
     final historico = mem.historicoParaPrompt();
-    final sistema = 'Você é $nome, assistente de voz brasileiro: sério, preciso, com humor seco ocasional. '
+
+    // Notas do Obsidian (só se o dono ligou a opção): trechos ligados à pergunta.
+    var notas = '';
+    if (prefs.getBool('usar_notas') ?? false) {
+      final cofre = prefs.getString(Memoria.chaveCofre) ?? '';
+      final termos = _termosDe(t);
+      if (cofre.isNotEmpty && termos.isNotEmpty) {
+        try {
+          final achados = await CofreObsidian.buscar(cofre, termos)
+              .timeout(const Duration(seconds: 6));
+          final partes = <String>[];
+          var total = 0;
+          for (final a in achados) {
+            final item = '- ${a['titulo']}: ${a['trecho']}';
+            if (total + item.length > 1500) break;
+            partes.add(item);
+            total += item.length;
+          }
+          if (partes.isNotEmpty) {
+            notas = '\nNotas do dono que podem ajudar (use só se forem relevantes, '
+                'e nunca leia inteiras):\n${partes.join('\n')}';
+          }
+        } catch (_) {
+          // sem notas: segue com o resto
+        }
+      }
+    }
+    final sistemaBase = 'Você é $nome, assistente de voz brasileiro: sério, preciso, com humor seco ocasional. '
         'Trate o dono por $tratamento. Responda em português, em no máximo 2 frases curtas (até 35 palavras), '
         'sem markdown, lista, emoji ou link, com números do jeito que se fala. Nunca invente dados. '
         '${sobre.isEmpty ? '' : 'Sobre o dono: $sobre. '}$lembrancas'
         '${historico.isEmpty ? '' : '\nConversa recente:\n$historico'}';
+    final sistema = sistemaBase + notas;
 
     final precisaBuscar = RegExp(
         r'\b(quem|quando|onde|quanto|qual|quais|notícia|noticias|notícias|cotação|clima|tempo|previsão|resultado|jogo|preço|preco|pesquis)')
@@ -265,6 +294,19 @@ class Cerebro {
           : 'Encontrei as chaves, $tratamento, mas as IAs falharam: $causas. Revise as configurações.');
     }
     return Resposta('O modelo offline está instalado, mas falhou ao responder. Feche e abra o app e tente novamente.');
+  }
+
+  List<String> _termosDe(String t) {
+    const parada = {
+      'qual', 'quais', 'quem', 'quando', 'onde', 'quanto', 'como', 'porque', 'sobre',
+      'para', 'pelo', 'pela', 'você', 'voce', 'isso', 'esse', 'essa', 'está', 'esta',
+      'umas', 'uns', 'dos', 'das', 'nos', 'nas', 'com', 'sem', 'mais', 'meu', 'minha',
+      'meus', 'minhas', 'tenho', 'fazer', 'falar', 'diga', 'sabe', 'quero', 'preciso',
+    };
+    final palavras = t
+        .split(RegExp(r'[^a-zA-ZÀ-ÿ0-9]+'))
+        .where((w) => w.length >= 4 && !parada.contains(w));
+    return palavras.toSet().take(6).toList();
   }
 
   Future<bool> _temInternet() async {

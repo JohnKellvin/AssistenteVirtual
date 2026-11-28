@@ -1,27 +1,50 @@
 import 'package:flutter/services.dart';
 
-/// Controla a janelinha flutuante (feita em Kotlin, na pasta android_extra/kotlin).
+/// Ponte com o indicador fixo do assistente (notificação feita em Kotlin).
 class Janela {
   static const _canal = MethodChannel('jarvis/janela');
 
-  static Future<bool> temPermissao() async {
+  /// Liga os avisos que vêm do Android: botões da notificação.
+  static void ouvir({
+    void Function(String acao)? aoAcao,
+    void Function(bool ativo)? aoStandby,
+    void Function()? aoEncerrar,
+  }) {
+    _canal.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'acao':
+          aoAcao?.call('${call.arguments}');
+          break;
+        case 'standby':
+          aoStandby?.call(call.arguments == true);
+          break;
+        case 'encerrar':
+          aoEncerrar?.call();
+          break;
+      }
+      return null;
+    });
+  }
+
+  /// Ação pedida pelo botão da notificação quando o app abriu do zero.
+  static Future<String?> acaoPendente() async {
     try {
-      return await _canal.invokeMethod<bool>('temPermissao') ?? false;
+      return await _canal.invokeMethod<String>('acaoPendente');
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
-  static Future<void> pedirPermissao() async {
+  /// Mostra ou atualiza o indicador. [estado]: ativo, ouvindo, pensando, falando ou standby.
+  static Future<bool> mostrar({
+    required String estado,
+    required String nome,
+    required bool midia,
+  }) async {
     try {
-      await _canal.invokeMethod('pedirPermissao');
-    } catch (_) {}
-  }
-
-  /// Mostra ou atualiza a bolinha: branca = ativo, cinza = stand-by.
-  static Future<bool> mostrar({required bool standby, required String nome}) async {
-    try {
-      return await _canal.invokeMethod<bool>('mostrar', {'standby': standby, 'nome': nome}) ?? false;
+      return await _canal.invokeMethod<bool>(
+              'mostrar', {'estado': estado, 'nome': nome, 'midia': midia}) ??
+          false;
     } catch (_) {
       return false;
     }
@@ -31,5 +54,15 @@ class Janela {
     try {
       await _canal.invokeMethod('esconder');
     } catch (_) {}
+  }
+
+  /// Pede ao Android um atalho na tela inicial com o nome escolhido.
+  static Future<String> criarAtalho(String nome) async {
+    try {
+      return await _canal.invokeMethod<String>('criarAtalho', {'nome': nome}) ??
+          'Não consegui criar o atalho.';
+    } catch (_) {
+      return 'Não consegui criar o atalho.';
+    }
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,7 @@ class _TelaPrincipalState extends State<TelaPrincipal>
   String _aviso = '';
   bool _ouvidoPronto = false;
   bool _enviando = false;
+  String _indicadorEnviado = '';
 
   String get nome => widget.prefs.getString('nome') ?? 'Jarvis';
   String get tratamento => widget.prefs.getString('tratamento') ?? 'Senhor';
@@ -42,18 +44,30 @@ class _TelaPrincipalState extends State<TelaPrincipal>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cerebro = Cerebro(widget.prefs);
+    Janela.ouvir(
+      aoAcao: (a) {
+        if (a == 'falar') _falarPeloIndicador();
+      },
+      aoStandby: (v) {
+        if (!mounted) return;
+        if (v) {
+          _ouvido.cancel();
+          _boca.stop();
+        }
+        setState(() {
+          _standby = v;
+          if (v) _estado = EstadoAssistente.pronto;
+        });
+      },
+      aoEncerrar: () => SystemNavigator.pop(),
+    );
     _iniciar();
   }
 
   // Ao sair do app, ele para de ouvir (nada fica escutando em segundo plano).
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
-    if (s == AppLifecycleState.resumed) {
-      Janela.esconder();
-    } else {
-      if (widget.prefs.getBool('janelinha') ?? true) {
-        Janela.mostrar(standby: _standby, nome: nome);
-      }
+    if (s != AppLifecycleState.resumed) {
       _ouvido.cancel();
       _boca.stop();
       if (mounted && _estado != EstadoAssistente.pronto) {
@@ -95,10 +109,46 @@ class _TelaPrincipalState extends State<TelaPrincipal>
     if (widget.prefs.getString('nome') == null && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _abrirConfig());
     }
-    if ((widget.prefs.getBool('janelinha') ?? true) &&
-        !await Janela.temPermissao()) {
-      await Janela.pedirPermissao();
+    // Android 13 ou mais novo: sem esta permissão o indicador não aparece.
+    await Permission.notification.request();
+    final pendente = await Janela.acaoPendente();
+    if (pendente == 'falar') _falarPeloIndicador();
+  }
+
+  // Botão "Falar" da notificação: acorda do stand-by ou começa a ouvir.
+  Future<void> _falarPeloIndicador() async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    if (_standby) {
+      setState(() {
+        _standby = false;
+        _aviso = '';
+        _resposta = '';
+      });
+      return;
     }
+    if (_estado == EstadoAssistente.pronto) await _comecarAOuvir();
+  }
+
+  // Mantém a notificação igual ao estado da tela (só envia quando algo muda).
+  void _sincronizarIndicador(String rotulo) {
+    final ligado = widget.prefs.getBool('janelinha') ?? true;
+    final midia = widget.prefs.getBool('indicador_midia') ?? true;
+    final chave = '$ligado|$midia|$nome|$rotulo';
+    if (chave == _indicadorEnviado) return;
+    _indicadorEnviado = chave;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ligado) {
+        Janela.mostrar(
+          estado: rotulo == 'stand-by' ? 'standby' : rotulo,
+          nome: nome,
+          midia: midia,
+        );
+      } else {
+        Janela.esconder();
+      }
+    });
   }
 
   // Um toque: começa a ouvir. Outro toque durante a escuta: envia na hora.
@@ -190,11 +240,12 @@ class _TelaPrincipalState extends State<TelaPrincipal>
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => TelaConfig(prefs: widget.prefs)),
     );
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _indicadorEnviado = '');
   }
 
   @override
   void dispose() {
+    Janela.esconder();
     WidgetsBinding.instance.removeObserver(this);
     _ouvido.cancel();
     _boca.stop();
@@ -212,6 +263,7 @@ class _TelaPrincipalState extends State<TelaPrincipal>
             EstadoAssistente.pensando: 'pensando',
             EstadoAssistente.falando: 'falando',
           }[_estado]!;
+    _sincronizarIndicador(rotulo);
     final textoBotao = _standby
         ? 'toque\npara acordar'
         : _estado == EstadoAssistente.ouvindo

@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -28,7 +27,7 @@
     </queries>
 
     <application
-        android:label="Jarvis"
+        android:label="Assistente"
         android:name="${applicationName}"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher">
@@ -49,12 +48,13 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".FloatingService"
+            android:name=".IndicadorService"
             android:exported="false"
+            android:stopWithTask="true"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Janela flutuante que mostra se o assistente esta ativo"/>
+                android:value="Notificacao fixa que mostra se o assistente esta ativo"/>
         </service>
         <meta-data
             android:name="flutterEmbedding"

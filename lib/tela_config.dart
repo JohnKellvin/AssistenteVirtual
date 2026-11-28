@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'armazenamento_chaves.dart';
 import 'memoria.dart';
 import 'cofre_obsidian.dart';
+import 'janela.dart';
 import 'modelo_local.dart';
 import 'provedores.dart';
 import 'versao.dart';
@@ -32,6 +33,10 @@ class _TelaConfigState extends State<TelaConfig> {
   int? _progresso;
   String _msgModelo = '';
   bool _janelinha = true;
+  bool _indicadorMidia = true;
+  bool _usarNotas = false;
+  String _msgAtalho = '';
+  int _tentativasSair = 0;
   bool _cofreConectado = false;
   String _msgMemoria = '';
 
@@ -54,6 +59,8 @@ class _TelaConfigState extends State<TelaConfig> {
     // Os segredos não voltam para os campos de texto ao abrir as configurações.
     _hf = TextEditingController();
     _janelinha = p.getBool('janelinha') ?? true;
+    _indicadorMidia = p.getBool('indicador_midia') ?? true;
+    _usarNotas = p.getBool('usar_notas') ?? false;
     _cofreConectado = (p.getString(Memoria.chaveCofre) ?? '').isNotEmpty;
     _msgMemoria = p.getString(Memoria.chaveErroCofre) ?? '';
     ModeloLocal.instalado(p).then((v) {
@@ -113,6 +120,8 @@ class _TelaConfigState extends State<TelaConfig> {
       );
       await p.setString('sobre', _sobre.text.trim());
       await p.setBool('janelinha', _janelinha);
+      await p.setBool('indicador_midia', _indicadorMidia);
+      await p.setBool('usar_notas', _usarNotas && _cofreConectado);
       await Memoria(p).sincronizarCofre();
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
@@ -175,6 +184,12 @@ class _TelaConfigState extends State<TelaConfig> {
         });
       }
     }
+  }
+
+  Future<void> _criarAtalho() async {
+    final nome = _nome.text.trim().isEmpty ? 'Jarvis' : _nome.text.trim();
+    final msg = await Janela.criarAtalho(nome);
+    if (mounted) setState(() => _msgAtalho = msg);
   }
 
   Future<void> _apagarMemoria() async {
@@ -268,7 +283,7 @@ class _TelaConfigState extends State<TelaConfig> {
     final salva = _chavesSalvas.contains(id);
     final remover = _removerChaves.contains(id);
     final dicaEstado = remover
-        ? 'Será removida ao tocar em Salvar.'
+        ? 'Será removida ao sair desta tela.'
         : salva
             ? 'Já está salva com proteção neste aparelho. Deixe vazio para manter.'
             : dica ?? 'Cole a chave aqui. Ela será protegida neste aparelho.';
@@ -375,7 +390,19 @@ class _TelaConfigState extends State<TelaConfig> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        _tentativasSair++;
+        // Segunda tentativa de voltar sai mesmo se o salvamento falhar.
+        if (!_chavesCarregadas || _tentativasSair > 1) {
+          Navigator.of(context).pop();
+          return;
+        }
+        await _salvar();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Configurações'),
         backgroundColor: Colors.black,
@@ -386,7 +413,7 @@ class _TelaConfigState extends State<TelaConfig> {
           _campo(
             'Nome do assistente',
             _nome,
-            dica: 'Ex.: Jarvis, Sexta-feira.',
+            dica: 'Ex.: Jarvis, Sexta-feira, Bia. Aparece no app, na notificação e nas respostas.',
           ),
           _campo(
             'Como ele te chama',
@@ -401,7 +428,7 @@ class _TelaConfigState extends State<TelaConfig> {
           ),
           _titulo(
             'IAs pela internet',
-            'Cole as chaves e toque em Salvar. Elas ficam protegidas neste aparelho. Deixe vazio para manter uma chave salva; use a lixeira para removê-la. Confira se a cota não cobra.',
+            'Cole as chaves. Elas são salvas ao sair desta tela. Elas ficam protegidas neste aparelho. Deixe vazio para manter uma chave salva; use a lixeira para removê-la. Confira se a cota não cobra.',
           ),
           if (!_chavesCarregadas)
             const Padding(
@@ -472,7 +499,7 @@ class _TelaConfigState extends State<TelaConfig> {
             ),
           _titulo(
             'Obsidian como memória',
-            'Escolha a pasta do cofre. O app cria e atualiza uma nota com os fatos lembrados e as conversas recentes.',
+            'Escolha a pasta do cofre. O app cria e atualiza uma nota com os fatos lembrados e as conversas recentes. Com a opção de notas ligada, ele também procura nas suas outras notas.',
           ),
           OutlinedButton.icon(
             onPressed: _conectarCofre,
@@ -499,16 +526,52 @@ class _TelaConfigState extends State<TelaConfig> {
                 style: const TextStyle(color: Colors.white60, fontSize: 13),
               ),
             ),
-          _titulo('Janelinha e memória'),
+          _titulo('Indicador, notas e ícone'),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Mostrar bolinha ao sair do app'),
+            title: const Text('Mostrar indicador de ativo'),
             subtitle: const Text(
-              'Branca = ativo, cinza = stand-by. Precisa da permissão de sobrepor apps.',
+              'Notificação fixa com o nome do assistente e os botões Falar, Stand-by e Encerrar. Precisa da permissão de notificações.',
             ),
             value: _janelinha,
             onChanged: (v) => setState(() => _janelinha = v),
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Estilo de player de mídia'),
+            subtitle: const Text(
+              'Cartão parecido com o do seu player de música, e chip na barra de status em alguns celulares. Enquanto o assistente está ativo, o botão play/pause do fone pode ir para ele.',
+            ),
+            value: _indicadorMidia,
+            onChanged: _janelinha ? (v) => setState(() => _indicadorMidia = v) : null,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Usar minhas notas do Obsidian nas respostas'),
+            subtitle: Text(
+              _cofreConectado
+                  ? 'Trechos das notas ligadas à pergunta são enviados à IA que responder, inclusive às da internet. Só ative se o cofre não tiver nada sensível.'
+                  : 'Conecte um cofre do Obsidian acima para usar esta opção.',
+            ),
+            value: _usarNotas && _cofreConectado,
+            onChanged: _cofreConectado ? (v) => setState(() => _usarNotas = v) : null,
+          ),
+          OutlinedButton.icon(
+            onPressed: _criarAtalho,
+            icon: const Icon(Icons.add_to_home_screen),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Criar ícone na tela inicial com esse nome'),
+            ),
+          ),
+          if (_msgAtalho.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                _msgAtalho,
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+            ),
           TextButton(
             onPressed: _apagarMemoria,
             child: const Text('Apagar memória e conversa'),
@@ -531,6 +594,7 @@ class _TelaConfigState extends State<TelaConfig> {
           const SizedBox(height: 16),
         ],
       ),
+    ),
     );
   }
 
